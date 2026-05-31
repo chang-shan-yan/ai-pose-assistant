@@ -12,36 +12,6 @@ try:
 except AttributeError:
     mp_success = False
 
-# =========================
-# 💡 雲端專用：網頁前端瀏覽器發聲機制 (優化安全版)
-# =========================
-# 先在網頁一開始就準備好一個固定的隱形發聲殼
-if 'voice_placeholder' not in st.session_state:
-    st.session_state.voice_placeholder = st.empty()
-
-def trigger_browser_speak(text):
-    now = time.time()
-    # 5 秒語音冷卻機制，避免重複轟炸
-    if now - st.session_state.last_voice_time > 5.0:
-        st.session_state.last_voice_time = now
-        
-        # 使用一個隨機數或時間戳記作為 key，防止瀏覽器快取混亂
-        js_code = f"""
-        <script>
-            var msg = new SpeechSynthesisUtterance("{text}");
-            msg.lang = "zh-TW";
-            msg.rate = 1.0;
-            window.speechSynthesis.speak(msg);
-        </script>
-        """
-        # 💡 使用固定的隱形 placeholder 更新，並給予唯一的 key，徹底解決 removeChild 報錯
-        st.session_state.voice_placeholder.components.html(
-            js_code, 
-            height=0, 
-            width=0, 
-            key=f"voice_{int(now)}"
-        )
-
 def calculate_line_angle(p1, p2):
     dx = p2[0] - p1[0]
     dy = p2[1] - p1[1]
@@ -56,6 +26,7 @@ def normalized_to_pixel(norm_x, norm_y, w, h):
 st.set_page_config(page_title="AI 肩頸糾正助理", layout="wide")
 st.title("AI 肩頸烏龜頸與駝背糾正助理 (雲端全功能語音版)")
 
+# 初始化發聲時間紀錄
 if 'last_voice_time' not in st.session_state:
     st.session_state.last_voice_time = 0.0
 
@@ -66,7 +37,7 @@ with st.sidebar:
     DETECTION_DELAY = st.slider("姿勢錯誤緩衝時間 (秒)", min_value=0.1, max_value=10.0, value=1.5, step=0.1, key="delay_slider")
 
     st.markdown("---")
-    st.markdown("💡 **語音提示已啟用：** 本版本支援雲端發聲！評審委员使用手機或筆電體驗時請開啟聲音。")
+    st.markdown("💡 **語音提示已啟用：** 本版本支援雲端發聲！評審委員使用手機或筆電體驗時請開啟聲音。")
 
     if 'running' not in st.session_state:
         st.session_state.running = False
@@ -74,9 +45,31 @@ with st.sidebar:
     if st.button("開始 / 停止 (切換)"):
         st.session_state.running = not st.session_state.running
 
+# 宣告固定網頁元件放置區（這些在迴圈中不會被重新創造）
 image_placeholder = st.empty()
 warning_placeholder = st.empty()
 
+# 💡 乾淨的發聲機制：利用現成免版權罐頭音效，直接用 JS 播放，完全不更動網頁結構！
+def play_warning_sound():
+    now = time.time()
+    # 4 秒語音冷卻機制，避免重複轟炸
+    if now - st.session_state.last_voice_time > 4.0:
+        st.session_state.last_voice_time = now
+        
+        # 這裡使用網路公開的標準嗶嗶警報聲 MP3
+        sound_url = "https://actions.google.com/sounds/v1/alarms/digital_watch_alarm_long.ogg"
+        js_code = f"""
+        <script>
+            var audio = new Audio("{sound_url}");
+            audio.play();
+        </script>
+        """
+        # 執行這行純 JS 播放聲音，因為沒有生出 HTML 標籤，所以絕對不會噴 removeChild 錯誤！
+        components.html(js_code, height=0, width=0)
+
+# =========================
+# 主程式執行區
+# =========================
 if st.session_state.running:
     cap = cv2.VideoCapture(0)
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
@@ -144,8 +137,7 @@ if st.session_state.running:
                     if turtle_start is None: turtle_start = now
                     elif (now - turtle_start) >= current_delay_thresh:
                         warning_placeholder.warning("⚠️ 偵測到烏龜頸！請稍微抬頭並收下巴。")
-                        # 💡 呼叫瀏覽器發聲
-                        trigger_browser_speak("請注意，你現在有烏龜頸，請收下巴")
+                        play_warning_sound()  # 💡 觸發乾淨音效
                 else:
                     turtle_start = None
 
@@ -153,8 +145,7 @@ if st.session_state.running:
                     if hunch_start is None: hunch_start = now
                     elif (now - hunch_start) >= current_delay_thresh:
                         warning_placeholder.error("🚨 偵測到駝背！請挺胸，坐直並打開胸腔。")
-                        # 💡 呼叫瀏覽器發聲
-                        trigger_browser_speak("請注意，你現在正在駝背，請挺胸坐直")
+                        play_warning_sound()  # 💡 觸發乾淨音效
                 else:
                     hunch_start = None
 
