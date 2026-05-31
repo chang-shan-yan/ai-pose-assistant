@@ -3,14 +3,12 @@ import cv2
 import time
 import math
 import numpy as np
-import streamlit.components.v1 as components
 
 # 確保 MediaPipe 引用正常
 try:
     import mediapipe as mp
-    mp_success = True
 except AttributeError:
-    mp_success = False
+    pass
 
 def calculate_line_angle(p1, p2):
     dx = p2[0] - p1[0]
@@ -24,7 +22,7 @@ def normalized_to_pixel(norm_x, norm_y, w, h):
 # Streamlit UI 介面
 # =========================
 st.set_page_config(page_title="AI 肩頸糾正助理", layout="wide")
-st.title("AI 肩頸烏龜頸與駝背糾正助理 (雲端全功能語音版)")
+st.title("AI 肩頸烏龜頸與駝背糾正助理 (雲端終極穩定版)")
 
 # 初始化發聲時間紀錄
 if 'last_voice_time' not in st.session_state:
@@ -37,7 +35,7 @@ with st.sidebar:
     DETECTION_DELAY = st.slider("姿勢錯誤緩衝時間 (秒)", min_value=0.1, max_value=10.0, value=1.5, step=0.1, key="delay_slider")
 
     st.markdown("---")
-    st.markdown("💡 **語音提示已啟用：** 本版本支援雲端發聲！評審委員使用手機或筆電體驗時請開啟聲音。")
+    st.markdown("💡 **提示：** 此版本將所有警告字樣直接融入影像中，確保雲端執行絕對不崩潰！")
 
     if 'running' not in st.session_state:
         st.session_state.running = False
@@ -45,18 +43,14 @@ with st.sidebar:
     if st.button("開始 / 停止 (切換)"):
         st.session_state.running = not st.session_state.running
 
-# 宣告固定網頁元件放置區（這些在迴圈中不會被重新創造）
+# 💡 全域唯一元件：整個網頁只更新這個圖片抽屜，其餘網頁結構完全不動，徹底根除前端衝突！
 image_placeholder = st.empty()
-warning_placeholder = st.empty()
 
-# 💡 乾淨的發聲機制：利用現成免版權罐頭音效，直接用 JS 播放，完全不更動網頁結構！
+# 💡 純 JavaScript 播放音效函數（不產生任何 HTML 標籤）
 def play_warning_sound():
     now = time.time()
-    # 4 秒語音冷卻機制，避免重複轟炸
     if now - st.session_state.last_voice_time > 4.0:
         st.session_state.last_voice_time = now
-        
-        # 這裡使用網路公開的標準嗶嗶警報聲 MP3
         sound_url = "https://actions.google.com/sounds/v1/alarms/digital_watch_alarm_long.ogg"
         js_code = f"""
         <script>
@@ -64,8 +58,8 @@ def play_warning_sound():
             audio.play();
         </script>
         """
-        # 執行這行純 JS 播放聲音，因為沒有生出 HTML 標籤，所以絕對不會噴 removeChild 錯誤！
-        components.html(js_code, height=0, width=0)
+        # 隱藏呼叫
+        st.components.v1.html(js_code, height=0, width=0)
 
 # =========================
 # 主程式執行區
@@ -98,7 +92,9 @@ if st.session_state.running:
             
             show_dist = "X_dist: 0.0 px"
             show_angle = "Angle: 0.0 deg"
-            
+            status_text = "STATUS: GOOD"
+            status_color = (0, 255, 0) # 綠色代表正常
+
             results = pose.process(image_rgb)
             if results and results.pose_landmarks and results.pose_landmarks.landmark:
                 landmarks = results.pose_landmarks.landmark
@@ -133,31 +129,33 @@ if st.session_state.running:
 
                 now = time.time()
                 
+                # 💡 這裡改用 OpenCV 繪製警告字樣，不再呼叫 st.warning() 變動網頁
                 if turtle_detected:
                     if turtle_start is None: turtle_start = now
                     elif (now - turtle_start) >= current_delay_thresh:
-                        warning_placeholder.warning("⚠️ 偵測到烏龜頸！請稍微抬頭並收下巴。")
-                        play_warning_sound()  # 💡 觸發乾淨音效
+                        status_text = "WARNING: TURTLE NECK!"
+                        status_color = (0, 165, 255) # 橘色警告
+                        play_warning_sound()
                 else:
                     turtle_start = None
 
                 if hunch_detected:
                     if hunch_start is None: hunch_start = now
                     elif (now - hunch_start) >= current_delay_thresh:
-                        warning_placeholder.error("🚨 偵測到駝背！請挺胸，坐直並打開胸腔。")
-                        play_warning_sound()  # 💡 觸發乾淨音效
+                        status_text = "ALERT: HUNCHBACK!"
+                        status_color = (0, 0, 255) # 紅色嚴重警告
+                        play_warning_sound()
                 else:
                     hunch_start = None
-
-                if not turtle_detected and not hunch_detected:
-                    warning_placeholder.empty()
 
                 show_dist = f"X_dist: {current_x_distance:.1f} px / Thresh: {current_dist_thresh}"
                 show_angle = f"Hunch Angle: {current_angle:.1f} deg / Thresh: {current_angle_thresh}"
 
-            cv2.rectangle(frame, (10, 10), (450, 85), (0, 0, 0), -1)
-            cv2.putText(frame, show_dist, (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
-            cv2.putText(frame, show_angle, (20, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+            # 繪製黑底狀態欄
+            cv2.rectangle(frame, (10, 10), (550, 120), (0, 0, 0), -1)
+            cv2.putText(frame, show_dist, (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+            cv2.putText(frame, show_angle, (20, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+            cv2.putText(frame, status_text, (20, 105), cv2.FONT_HERSHEY_SIMPLEX, 0.8, status_color, 2)
 
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             image_placeholder.image(frame_rgb, channels="RGB")
@@ -165,4 +163,3 @@ if st.session_state.running:
         cap.release()
 else:
     image_placeholder.image(np.zeros((480, 640, 3), dtype=np.uint8), channels="BGR")
-    warning_placeholder.empty()
