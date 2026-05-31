@@ -13,14 +13,19 @@ except AttributeError:
     mp_success = False
 
 # =========================
-# 💡 雲端專用：網頁前端瀏覽器發聲機制 (Web Speech API)
+# 💡 雲端專用：網頁前端瀏覽器發聲機制 (優化安全版)
 # =========================
+# 先在網頁一開始就準備好一個固定的隱形發聲殼
+if 'voice_placeholder' not in st.session_state:
+    st.session_state.voice_placeholder = st.empty()
+
 def trigger_browser_speak(text):
     now = time.time()
-    # 5 秒語音冷卻機制
+    # 5 秒語音冷卻機制，避免重複轟炸
     if now - st.session_state.last_voice_time > 5.0:
         st.session_state.last_voice_time = now
-        # 用 HTML/JS 讓使用者的瀏覽器自己開口說話
+        
+        # 使用一個隨機數或時間戳記作為 key，防止瀏覽器快取混亂
         js_code = f"""
         <script>
             var msg = new SpeechSynthesisUtterance("{text}");
@@ -29,8 +34,13 @@ def trigger_browser_speak(text):
             window.speechSynthesis.speak(msg);
         </script>
         """
-        # 悄悄在網頁後台插入這段發聲程式碼
-        components.html(js_code, height=0, width=0)
+        # 💡 使用固定的隱形 placeholder 更新，並給予唯一的 key，徹底解決 removeChild 報錯
+        st.session_state.voice_placeholder.components.html(
+            js_code, 
+            height=0, 
+            width=0, 
+            key=f"voice_{int(now)}"
+        )
 
 def calculate_line_angle(p1, p2):
     dx = p2[0] - p1[0]
