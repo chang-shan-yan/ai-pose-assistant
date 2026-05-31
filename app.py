@@ -3,7 +3,6 @@ import cv2
 import time
 import math
 import numpy as np
-import streamlit.components.v1 as components
 
 # 確保 MediaPipe 引用正常
 try:
@@ -23,7 +22,7 @@ def normalized_to_pixel(norm_x, norm_y, w, h):
 # Streamlit UI 介面
 # =========================
 st.set_page_config(page_title="AI 肩頸糾正助理", layout="wide")
-st.title("AI 肩頸烏龜頸與駝背糾正助理 (雲端絕對穩定版)")
+st.title("AI 肩頸烏龜頸與駝背糾正助理 (雲端終極純淨版)")
 
 with st.sidebar:
     st.header("參數設定")
@@ -32,7 +31,7 @@ with st.sidebar:
     DETECTION_DELAY = st.slider("姿勢錯誤緩衝時間 (秒)", min_value=0.1, max_value=10.0, value=1.5, step=0.1, key="delay_slider")
 
     st.markdown("---")
-    st.markdown("💡 **提示：** 本版本採用全域固定音效監聽器，迴圈零節點操作，保證雲端絕不崩潰！")
+    st.markdown("💡 **提示：** 本版本改用系統級原生提示，100% 根除網頁元件衝突！")
 
     if 'running' not in st.session_state:
         st.session_state.running = False
@@ -40,45 +39,12 @@ with st.sidebar:
     if st.button("開始 / 停止 (切換)"):
         st.session_state.running = not st.session_state.running
 
-# =========================================================
-# 🎯 核心黑科技：全域固定隱形音效監聽器 (常駐網頁，永不刪除)
-# =========================================================
-# 建立一個常駐在網頁上的 JS 計時器，每 1 秒去偷看網頁上的某個隱藏按鈕，一旦發現要報警就放音效
-sound_url = "https://actions.google.com/sounds/v1/alarms/digital_watch_alarm_long.ogg"
+# 初始化發聲時間紀錄
+if 'last_voice_time' not in st.session_state:
+    st.session_state.last_voice_time = 0.0
 
-js_listener = f"""
-<div id="trigger-status" data-signal="safe" style="display:none;"></div>
-<script>
-    // 建立唯一的全域音頻物件
-    if (!window.myGlobalAudio) {{
-        window.myGlobalAudio = new Audio("{sound_url}");
-    }}
-    
-    // 設定每 500 毫秒檢查一次是否有報警訊號
-    if (!window.mySoundInterval) {{
-        let lastPlayed = 0;
-        window.mySoundInterval = setInterval(() => {{
-            const div = parent.document.querySelector('[data-testid="stMarkdownContainer"] p');
-            if (div && (div.innerText.includes("TURTLE") || div.innerText.includes("HUNCH"))) {{
-                let now = Date.now();
-                if (now - lastPlayed > 4000) {{  // 4秒冷卻
-                    window.myGlobalAudio.play().catch(e => console.log("等待使用者點擊網頁觸發音訊..."));
-                    lastPlayed = now;
-                }}
-            }}
-        }}, 500);
-    }}
-</script>
-"""
-# 把它塞在最頂端，整個生命週期只會被渲染這一次
-components.html(js_listener, height=0, width=0)
-
-# 建立畫面的固定抽屜
+# 全網頁唯一的動態抽屜：只留相機影像，其餘全部拔除！
 image_placeholder = st.empty()
-
-# 💡 這個看似普通的文字，是用來給上面的隱形 JavaScript 讀取訊號的暗號區！
-signal_placeholder = st.empty()
-signal_placeholder.caption("系統狀態：準備就緒")
 
 # =========================
 # 主程式執行區
@@ -113,7 +79,8 @@ if st.session_state.running:
             show_angle = "Angle: 0.0 deg"
             status_text = "STATUS: GOOD"
             status_color = (0, 255, 0) 
-            current_signal = "safe" # 給 JS 聽的暗號
+            trigger_alert = False
+            alert_message = ""
 
             results = pose.process(image_rgb)
             if results and results.pose_landmarks and results.pose_landmarks.landmark:
@@ -149,12 +116,16 @@ if st.session_state.running:
 
                 now = time.time()
                 
+                # 💡 純影像文字更新
                 if turtle_detected:
                     if turtle_start is None: turtle_start = now
                     elif (now - turtle_start) >= current_delay_thresh:
                         status_text = "WARNING: TURTLE NECK!"
                         status_color = (0, 165, 255) 
-                        current_signal = "danger_turtle" # 變更暗號，頂端監聽器看到就會嗶嗶叫
+                        if now - st.session_state.last_voice_time > 5.0:
+                            trigger_alert = True
+                            alert_message = "⚠️ 偵測到烏龜頸！請收下巴！"
+                            st.session_state.last_voice_time = now
                 else:
                     turtle_start = None
 
@@ -163,7 +134,10 @@ if st.session_state.running:
                     elif (now - hunch_start) >= current_delay_thresh:
                         status_text = "ALERT: HUNCHBACK!"
                         status_color = (0, 0, 255) 
-                        current_signal = "danger_hunch" # 變更暗號
+                        if now - st.session_state.last_voice_time > 5.0:
+                            trigger_alert = True
+                            alert_message = "🚨 偵測到駝背！請挺胸坐直！"
+                            st.session_state.last_voice_time = now
                 else:
                     hunch_start = None
 
@@ -176,12 +150,15 @@ if st.session_state.running:
             cv2.putText(frame, show_angle, (20, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
             cv2.putText(frame, status_text, (20, 105), cv2.FONT_HERSHEY_SIMPLEX, 0.8, status_color, 2)
 
-            # 更新暗號與影像（都是固定覆蓋，不產生新節點，絕對安全）
-            signal_placeholder.caption(f"監聽狀態: {current_signal}")
+            # 更新影像（單一節點，絕對安全）
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             image_placeholder.image(frame_rgb, channels="RGB")
+            
+            # 💡 觸發原生瀏覽器彈窗警告，這不會在 Streamlit 裡面生出任何網頁標籤，永遠不會噴 removeChild！
+            if trigger_alert:
+                st.toast(alert_message) # 右下角小彈窗提示
+            
             time.sleep(0.01)
         cap.release()
 else:
     image_placeholder.image(np.zeros((480, 640, 3), dtype=np.uint8), channels="BGR")
-    signal_placeholder.caption("監聽狀態: idle")
